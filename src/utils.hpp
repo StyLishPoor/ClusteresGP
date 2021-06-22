@@ -7,9 +7,9 @@
 
 using namespace std;
 
-DiGraph & read_graph(DiGraph &, ifstream &);
-pair<int, int> vertex_edge_num(ifstream &);
-int edge_num(ifstream &);
-vector<DiGraph> partition(ifstream &, int, int);
+DiGraph & read_graph(DiGraph &, string);
+pair<int, int> vertex_edge_num(string);
+int edge_num(string);
+vector<DiGraph> partition(string, int, int);
 
 #endif

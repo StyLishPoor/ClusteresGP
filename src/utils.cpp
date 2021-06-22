@@ -2,11 +2,16 @@
 #include <string>
 #include "utils.hpp"
 
-DiGraph & read_graph(DiGraph & g, ifstream & ifs)
+DiGraph & read_graph(DiGraph & g, string path)
 {
   Vertex src, dst;
   string tmp;
   bool hoge = true;
+  ifstream ifs(path);
+  if (!ifs) {
+    cerr << "Cannot open file" << endl;
+    exit(1);
+  }
   while (getline(ifs, tmp)) {
     if (!isdigit(tmp[0])) continue;
     src = stoi(tmp.substr(0, tmp.find('\t')));
@@ -20,8 +25,13 @@ DiGraph & read_graph(DiGraph & g, ifstream & ifs)
   return g;
 }
 
-pair<int, int> vertex_edge_num(ifstream & ifs)
+pair<int, int> vertex_edge_num(string path)
 {
+  ifstream ifs(path);
+  if (!ifs) {
+    cerr << "Cannot open file" << endl;
+    exit(1);
+  }
   pair<int, int> num; // vertex : edge
   string tmp;
   while (getline(ifs, tmp)) {
@@ -34,15 +44,20 @@ pair<int, int> vertex_edge_num(ifstream & ifs)
   return num;
 }
 
-vector<DiGraph> partition(ifstream & ifs, int edge_num, int graph_num)
+vector<DiGraph> partition(string path, int edge_num, int graph_num)
 {
+  ifstream ifs(path);
+  if (!ifs) {
+    cerr << "Cannot open file" << endl;
+    exit(1);
+  }
   int high_graph = edge_num % graph_num; // あまりを負担するグラフ
   int edge_graph = edge_num / graph_num;
+  cout << edge_graph << endl;
   int graph_id = 0;
-  vector<DiGraph> graphs(graph_num + 1);
-
+  vector<DiGraph> graphs(graph_num);
   int src, dst;
-  int count;
+  int count = 0;
   string tmp;
   while (getline(ifs, tmp)) {
     if (!isdigit(tmp[0])) continue;
@@ -76,5 +91,4 @@ vector<DiGraph> partition(ifstream & ifs, int edge_num, int graph_num)
   }
   return graphs;
 }
-
 

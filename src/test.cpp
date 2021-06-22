@@ -13,21 +13,17 @@ int main(int argc, char* argv[])
     exit(1);
   }
 
-  ifstream ifs(argv[1]);
-  if (!ifs) {
-    cerr << "Cannot open file" << endl;
-    exit(1);
-  }
-
   DiGraph all_graph;
-  all_graph = read_graph(all_graph, ifs);
-  cout << all_graph.edge_num << endl;
+  all_graph = read_graph(all_graph, argv[1]);
   int graph_id = 0;
-  pair<int, int> num = vertex_edge_num(ifs); // vertex_num : edge_num
-  for (auto & grpah : partition(ifs, all_graph.edge_num, stoi(argv[2]))) {
-    cout << "Hello" << endl;
-    cout << "Graph" << graph_id++ << " -> max id : " << grpah.get_num_vertices() << endl;
+  pair<int, int> num = vertex_edge_num(argv[1]); // vertex_num : edge_num
+  cout << "All Graph edge num : " << all_graph.get_num_edges() << endl;
+  int tmp = 0;
+  for (auto & grpah : partition(argv[1], all_graph.edge_num, stoi(argv[2]))) {
+    tmp += grpah.get_num_edges();
+    cout << "Graph" << graph_id++ << " -> edges num : " << grpah.get_num_edges() << endl;
   }
+  cout << tmp << endl;
   return 0;
 }
 

@@ -29,8 +29,11 @@ int DiGraph::get_num_vertices() {
 }
 
 int DiGraph::get_num_edges() {
-  // unused method
-  return 0;
+  int edge_num = 0;
+  for (auto & adj : adjacency_list) {
+    edge_num += adj.second.size();
+  }
+  return edge_num;
 }
 
 int DiGraph::get_degree(Vertex v) {
