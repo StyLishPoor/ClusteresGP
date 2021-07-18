@@ -48,11 +48,10 @@ def get_bridge_nodes(G, PG):
         sub_edges.append(e)
     bridge_edges = list(set(bridge_edges) - set(sub_edges))
 
-    for bridge_edge in bridge_edges:
-      bridge_nodes.add(bridge_edge[0])
-      bridge_nodes.add(bridge_edge[1])
-    print(bridge_nodes)
-    return bridge_nodes
+  for bridge_edge in bridge_edges:
+    bridge_nodes.add(bridge_edge[0])
+    bridge_nodes.add(bridge_edge[1])
+  return bridge_nodes
 
 def RandomWalk(source, a, N, G, source_G_nodes, souce_bridge_nodes):
   visit_count = {}
@@ -85,15 +84,21 @@ def RandomWalk(source, a, N, G, source_G_nodes, souce_bridge_nodes):
   return visit_count, out_graph_count
       
       
-def Bridge_RandomWalk(bridge_nodes, a, N, G, bridge_G_nodes):
-  result = {}
+def Bridge_RandomWalk(G, Sub_G, a, N, out_bridges, in_bridges):
+  visit_counts = {} # visit_counts[N][M] : Bridge N → M の回数
+  probability = {} # probability[N][M] : N → M にでていく確率
 
-  for bridge in bridge_nodes:
+
+  for bridge in in_bridges:
+    probability[bridge] = {}
     visit_count = {}
-    out_graph_counts = {}
-    for node in list(G.nodes):
-      visit_count[node] = 0
-      out_graph_counts[node] = {}
+    out_graph_count = {}
+    
+    for node in Sub_G:
+     visit_count[node] = 0
+    for node in out_bridges:
+      out_graph_count[node] = 0
+
     RW_count = 0
     current_node = bridge
     next_node = bridge
@@ -105,17 +110,16 @@ def Bridge_RandomWalk(bridge_nodes, a, N, G, bridge_G_nodes):
         RW_count += 1
       else:
         next_node= random.choice(list(G.neighbors(current_node)))
-        if (next_node not in bridge_G_nodes):
-          if (next_node not in out_graph_count[current_node]):
-            out_graph_count[current_node][next_node] = 1
-          else:
-            out_graph_count[current_node][next_node] += 1
+        if (next_node in out_bridges):
+          out_graph_count[next_node] += 1
           next_node = bridge
           RW_count += 1
-    result[bridge] = [visit_count, out_graph_counts]
-    #print("-------")
-    #print(visit_count)
-  return result
+    for node, count in out_graph_count.items():
+      probability[bridge][node] = count / N
+
+    visit_counts[bridge] = visit_count
+
+  return visit_counts, probability
 
 def Re_Bridge_RandomWalk(re_rw_num, prev_count, a, G, source_G_nodes):
 
@@ -136,7 +140,11 @@ def Re_Bridge_RandomWalk(re_rw_num, prev_count, a, G, source_G_nodes):
           RW_count += 1
   #print(prev_count)
 
-def Back_probability(G, a, N, s_bridges, t_bridges):
+def Back_probability(G, a, N, s_bridges, t_bridges, graph):
+  
+  #print("--------")
+  #print(s_bridges)
+  #print("--------")
   probability = {}
 
   for bridge in t_bridges:
@@ -182,22 +190,54 @@ def estimate_rw_count(source_graph_random_walk_result, out_graph_count, s_bridge
     for t_bridge, count in counts.items():
       for s_bridge, prob in back_probability[t_bridge].items():
         #print(str(t_bridge) + " to " + str(s_bridge) + " " + str(count) + " " + str(prob))
-        re_rw_num[s_bridge] += (count * prob)
-  #print(re_rw_num)
+        re_rw_num[s_bridge] += (count * (prob / (1 - prob)))
+        #re_rw_num[s_bridge] += (count * prob)
+
   return re_rw_num
 
 def Bt_return_prob(Bt, s_to_t_prob, t_to_s_prob, ppr, a):
+ #local_prob = (ppr - a) / (1 + ppr - a)
+ out_prob = 0
+ for Bs, prob in t_to_s_prob[Bt].items():
+  if Bt in s_to_t_prob[Bs]:
+    out_prob += prob * s_to_t_prob[Bs][Bt]
+ return out_prob
+    
+
+def Bt_return_num(ppr, a):
  local_prob = (ppr - a) / (1 + ppr - a)
  out_prob = 0
  for Bs, prob in t_to_s_prob[Bt].items():
-  out_prob += prob * s_to_t_prob[Bs][Bt]
- 
+  if Bt in s_to_t_prob[Bs]:
+    out_prob += prob * s_to_t_prob[Bs][Bt]
+ #print(Bt, local_prob + out_prob)
  return local_prob + out_prob
-    
+ 
+def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph_result, target_nodes, N):
+  init_flag = False
+  true_rw_visit = {}
+  t_bridge_start = {}
+  for v in t_to_s_probability.keys():
+    if(init_flag == False):
+      for node in t_graph_result[v].keys():
+        true_rw_visit[node] = 0
+      init_flag = True
+    t_bridge_start[v] = 0
+  
+  for s, counts in s_to_t_count.items():
+    for t, count in counts.items():
+      # やや低く見積もられた値が計算されてしまう．RW １万回のとき，約1.3倍で良さげな値になる
+      #t_bridge_start[t] += 1.3 * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      t_bridge_start[t] += count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
 
+  for t, t_results in t_graph_result.items():
+    for target, count in t_results.items():
+      true_rw_visit[target] += count * (t_bridge_start[t]/N) / N 
+  return true_rw_visit 
 G = nx.karate_club_graph()
 PG = []
 objval, fpgaparts = nxmetis.partition(G, int(sys.argv[1]))
+#print(fpgaparts)
 
 ppr_source = 14
 source_G_nodes = []
@@ -218,40 +258,39 @@ for part in fpgaparts:
 bridge_nodes = get_bridge_nodes(G, PG)
 bridge_result = {}
 source_bridge_nodes = []
+target_bridge_nodes = []
 source_graph_random_walk_result = {}
 bridge_graph_random_walk_result = {}
-target_bridge_nodes = {}
 out_graph_count = {}
 back_probability = {}
+beyond_probability = {}
 for part in fpgaparts:
   if ppr_source in part:
     source_bridge_nodes = list(set(bridge_nodes) & set(part))
-    #source_bridge_nodes = part
-    source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, part, source_bridge_nodes)
   else:
     target_bridge_nodes = list(set(bridge_nodes) & set(part))
-    back_probability = Back_probability(G, 0.15, int(sys.argv[2]), source_bridge_nodes, part)
-    #print(back_probability[2])
-    #print(back_probability[9])
-    #bridge_result = Bridge_RandomWalk(bridge_nodes & set(part), 0.15, int(sys.argv[2]), G, part)
-    #print(bridge_result[0])
-    #print(bridge_result[2])
 
-#for bridge in source_bridge_nodes:
+for part in fpgaparts:
+  if ppr_source in part:
+    #source_bridge_nodes = part
+    source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, part, source_bridge_nodes)
+    #beyond_probability = Back_probability(G, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes, part)
+    #beyond_probability = Back_probability(G, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes)
+    s_bridge_results, beyond_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes)
 
+  else:
+    t_bridge_results, back_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
 
-#for bridge in source_bridge_nodes:
-  #for out, count in out_graph_count[bridge].items():
-#back_probability(G, 0.15, int(sys.argv[2]), 
-    #print(bridge_result[out][1][bridge])
-    #source_graph_random_walk_result[bridge] += 0.15 * count * bridge_result[out][1][bridge] / int(sys.argv[2])
+t_graph_pprs = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
+
 tmp = source_graph_random_walk_result.copy()
 for node in tmp.keys():
   tmp[node] /= float(sys.argv[2]) 
-top_ppr(tmp, source_G_nodes)
+#top_ppr(tmp, source_G_nodes)
 re_rw_num = estimate_rw_count(source_graph_random_walk_result, out_graph_count, source_bridge_nodes, back_probability)
-Re_Bridge_RandomWalk(re_rw_num, source_graph_random_walk_result, 0.15, G, source_G_nodes)
-for node in source_graph_random_walk_result.keys():
+Re_Bridge_RandomWalk(re_rw_num, source_graph_random_walk_result, 0.15, G, source_G_nodes) 
+
+for node in source_graph_random_walk_result.keys(): 
   source_graph_random_walk_result[node] /= float(sys.argv[2]) 
 
 out_graph_probability = {}
@@ -281,15 +320,19 @@ for t_bridge in target_bridge_nodes:
   for s_bridge in source_bridge_nodes:
     if (G.has_edge(s_bridge, t_bridge)):
       for target in target_G_nodes:
-        target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] / (1 + Bt_return_prob(target, out_graph_probability, back_probability, target_bridge_pprs[t_bridge][t_bridge], 0.15)) 
+        #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] / ((target_bridge_pprs[t_bridge][t_bridge] / 0.15) + (1 / 1 -  Bt_return_prob(t_bridge, out_graph_probability, back_probability, target_bridge_pprs[t_bridge][t_bridge], 0.15)))
+        target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] /((target_bridge_pprs[t_bridge][t_bridge] / 0.15));
+        #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] / ((1/1-(Bt_return_prob(t_bridge, out_graph_probability, back_probability, target_bridge_pprs[t_bridge][t_bridge], 0.15))) + (target_bridge_pprs[t_bridge][t_bridge] / 0.15));
+        #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] / ((1 + target_graph.degree(target)/G.degree(target)) * target_bridge_pprs[t_bridge][t_bridge] / 0.15);
+        #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * (target_graph.degree(t_bridge) / len(list(G.neighbors(t_bridge)))) * target_bridge_pprs[t_bridge][target]
+        #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * target_bridge_pprs[t_bridge][target] * (1 - 5 * Bt_return_prob(t_bridge, out_graph_probability, back_probability, target_bridge_pprs[t_bridge][t_bridge], 0.15)) 
         #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * direct_probability[t_bridge] * target_bridge_pprs[t_bridge][target]
         #target_pprs[target] += source_graph_random_walk_result[s_bridge] / 0.15  * 0.85 / len(list(G.neighbors(s_bridge))) * ((1 - target_bridge_pprs[t_bridge][t_bridge]) / (1 + target_bridge_pprs[t_bridge][t_bridge])) * target_bridge_pprs[t_bridge][target]
 
 #print(source_graph_random_walk_result)
 #print(target_pprs)
-#true_pprs = source_graph_random_walk_result | target_pprs
-source_graph_random_walk_result.update(target_pprs)
-#true_pprs = dict(source_graph_random_walk_result, **target_pprs)
+#source_graph_random_walk_result.update(target_pprs)
+source_graph_random_walk_result.update(t_graph_pprs)
 #print(source_bridge_nodes)
 #for node, count in random_walk_result:
   #print(str(node) + " : " + str(count))
@@ -306,10 +349,11 @@ perfect_pprs = nx.pagerank(G, personalization={ppr_source:1})
 top_ppr(perfect_pprs, list(G.nodes()))
 #print(perfect_pprs)
 
+print("nora GRAPH")
 #top_ppr(source_graph_random_walk_result, source_G_nodes)
-#top_ppr(source_graph_random_walk_result, list(G.nodes()))
+top_ppr(source_graph_random_walk_result, list(G.nodes()))
 
-##print(calc_ndcg(perfect_pprs, source_graph_random_walk_result))
+print(calc_ndcg(perfect_pprs, source_graph_random_walk_result))
 
 node_colors = ['black'] * nx.number_of_nodes(G)
 colors = ['red', 'yellow', 'green', 'blue', 'black']
@@ -323,4 +367,4 @@ fig = plt.figure()
 #pos = nx.circular_layout(G)
 nx.draw_networkx(G, node_color=node_colors)
 plt.axis("off")
-fig.savefig("partition.png")
+#fig.savefig("partition.png")
