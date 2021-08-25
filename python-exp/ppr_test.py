@@ -189,6 +189,8 @@ def Back_probability(G, a, N, s_bridges, t_bridges, graph):
   return probability
 
 def estimate_rw_count(source_graph_random_walk_result, out_graph_count, s_bridges, back_probability):
+  print("OUTOUT")
+  print(out_graph_count)
   # back_probability[M][N] : M にでていった RW が N に戻ってくる確率
   # source_graph_random_walk_result[N] : N で RW が終了する回数
   # out_graph_count[N][M] : N から M に RW が出ていった回数
@@ -228,37 +230,30 @@ def Bt_return_num(ppr, a):
  return local_prob + out_prob
  
 def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph_result, target_nodes, N):
-  #print("Beyond5G");
-  print(s_to_t_count)
-  print("Next")
-  #print(t_graph_result)
-  #print("plz");
-  init_flag = False
-  true_rw_visit = {}
   t_bridge_start = {}
+  s_bridge_re_start = {}
+
   t_to_t = {}
+  s_to_s = {}
   next_t_to_t = {}
-  sum_count = {}
-  add_t = {}
+  next_s_to_s = {}
+
   back_sum_probability = {}
   s_back_sum_probability = {}
+
   return_sum_probability = {} 
   
   for v in t_to_s_probability.keys():
-    sum_count[v] = 0
     back_sum_probability[v] = 0
-    return_sum_probability[v] = 0
-    if(init_flag == False):
-      for node in t_graph_result[v].keys():
-        true_rw_visit[node] = 0
-      init_flag = True
     t_bridge_start[v] = 0
-    add_t[v] = 0
     next_t_to_t[v] = 0
     t_to_t[v] = 0
 
   for v in s_to_t_probability.keys():
     s_back_sum_probability[v] = 0
+    s_bridge_re_start[v] = 0
+    next_s_to_s[v] = 0
+    s_to_s[v] = 0
 
   for t, probs in t_to_s_probability.items():
     for prob in probs.values():
@@ -268,156 +263,213 @@ def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph
     for prob in probs.values():
       s_back_sum_probability[s] += prob
 
-  for t_bridge in t_to_s_probability.keys():
-    for s_bridge in s_to_t_probability.keys():
-      return_sum_probability[t_bridge] += t_to_s_probability[t_bridge][s_bridge] * s_to_t_probability[s_bridge][t_bridge]
-
-
   for counts in s_to_t_count.values():
     for t, count in counts.items():
-      #t_bridge_start[t] = (1 - back_sum_probability[t]) * count
-      #t_to_t[t] = (1 - back_sum_probability[t]) * count
       t_to_t[t] += count 
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count
-  print("t_to_t")
-  print(t_to_t)
 
-  t_bridge_start_initial = 0
-  for t, num in t_to_t.items():
-     t_bridge_start_initial += num
-  print("******")
-  print(t_bridge_start_initial)
-            
+  # 割り振りが終了するまで回し続ける
+  while(rw_remain(t_to_t) > 1):
+    print(rw_remain(t_to_t))
+    for t_org, remain in t_to_t.items():
+      # まずは現在の残りから(1-back_sum_probability)だけ確定させる
+      t_bridge_start[t_org] += (1 - back_sum_probability[t_org]) * remain
+      for s in s_to_t_probability.keys():
+        s_bridge_re_start[s] += (1 - s_back_sum_probability[s]) * remain * t_to_s_probability[t_org][s] 
+        for t_target in t_to_s_probability.keys():
+          next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+    # next_t_to_tをt_to_tに代入し，next_t_to_tを初期化
+    for t in t_to_t.keys():
+      t_to_t[t] = next_t_to_t[t]
+      next_t_to_t[t] = 0
 
-  for s, counts in s_to_t_count.items():
-    for t, count in counts.items():
-      t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count
-  print("FUGA")
+  print("DEBUGGER")
   print(t_bridge_start)
+  print("--------")
+  print(s_bridge_re_start)
 
-  t_bridge_start_initial = 0
-  for t, num in t_bridge_start.items():
-     t_bridge_start_initial += num
-  print("******")
-  print(t_bridge_start_initial)
+  return t_bridge_start, s_bridge_re_start
 
-  for t_org, remain in t_to_t.items():
-    for s in s_to_t_probability.keys():
-      for t_target in t_to_s_probability.keys():
-        if t_org != t_target:
-          # 帰ってきたRWerのうち(1-back_sum_probability[t_target])がプラスされる
-          t_bridge_start[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-          #t_bridge_start[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target] * 1.5 
-          #t_bridge_start[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-        #add_t[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-        #next_t_to_t[t_target] += back_sum_probability[t_target] * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-          #t_bridge_start[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target] / (1 - return_sum_probability[t_target])
-  
-  for t_org, remain in t_to_t.items():
-    for s in s_to_t_probability.keys():
-      for t_target in t_to_s_probability.keys():
-        print(t_org, t_target, s)
-        next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-
-  print("Last t_bridge_start")
-  print(t_bridge_start)
-  t_bridge_start_total = 0
-  for t, num in t_bridge_start.items():
-    t_bridge_start_total += num
-  print(t_bridge_start_total)
-  
-  print("t_to_t")
-  print(t_to_t)
-  print("Next")
-  print(next_t_to_t)
-  print(rw_remain(next_t_to_t))
-  print("back sum")
-  print(back_sum_probability)
-  print(s_back_sum_probability)
-
-  #for s, counts in s_to_t_count.items():
+#def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph_result, target_nodes, N):
+  #init_flag = False
+  #true_rw_visit = {}
+  #t_bridge_start = {}
+  #t_to_t = {}
+  #next_t_to_t = {}
+  #sum_count = {}
+  #add_t = {}
+  #back_sum_probability = {}
+  #s_back_sum_probability = {}
+  #return_sum_probability = {} 
+  #
+  #for v in t_to_s_probability.keys():
+    #sum_count[v] = 0
+    #back_sum_probability[v] = 0
+    #return_sum_probability[v] = 0
+    #if(init_flag == False):
+      #for node in t_graph_result[v].keys():
+        #true_rw_visit[node] = 0
+      #init_flag = True
+    #t_bridge_start[v] = 0
+    #add_t[v] = 0
+    #next_t_to_t[v] = 0
+    #t_to_t[v] = 0
+#
+  #for v in s_to_t_probability.keys():
+    #s_back_sum_probability[v] = 0
+#
+  #for t, probs in t_to_s_probability.items():
+    #for prob in probs.values():
+      #back_sum_probability[t] += prob
+#
+  #for s, probs in s_to_t_probability.items():
+    #for prob in probs.values():
+      #s_back_sum_probability[s] += prob
+#
+  #for t_bridge in t_to_s_probability.keys():
+    #for s_bridge in s_to_t_probability.keys():
+      #return_sum_probability[t_bridge] += t_to_s_probability[t_bridge][s_bridge] * s_to_t_probability[s_bridge][t_bridge]
+#
+#
+  #for counts in s_to_t_count.values():
     #for t, count in counts.items():
-      #t_bridge_start[t] += counts[t] * ((1 - back_sum_probability[t] + back_sum_probability[t] * return_sum_probability[t]) / (back_sum_probability[t] - back_sum_probability[t] * return_sum_probability[t]))
-      #t_bridge_start[t] += counts[t] * (1 - 0.75*back_sum_probability[t])
-      #t_bridge_start[t] += s_to_t_count[s][t] * (1 - probs[s])
-    #for t, count in counts.items():
-      # やや低く見積もられた値が計算されてしまう．RW １万回のとき，約1.3倍で良さげな値になる
-      #t_bridge_start[t] += count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
-      #t_bridge_start[t] += (1 - back_sum_probability[t]) * count 
-      #t_bridge_start[t] += (1 - t_to_s_probability[t][s]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += (1 - return_sum_probability[t]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += count / (1 - 3*s_to_t_probability[s][t]*3*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += count
-      #sum_count[t] += count
-      #print(str(s) + " <-> " + str(t) + " : " + str(s_to_t_probability[s][t]) + " " + str(t_to_s_probability[t][s]))
-      #t_bridge_start[t] += count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
-      #t_bridge_start[t] += count
-  #for node in sum_count.keys():
-  #  print(t_bridge_start[node] / sum_count[node])
-
-  # 初期化
-  for t in t_to_t.keys():
-    t_bridge_start[t] = 0
-    next_t_to_t[t] = 0
-
-  print("NoraMethod!!!!")
-  
+      ##t_bridge_start[t] = (1 - back_sum_probability[t]) * count
+      ##t_to_t[t] = (1 - back_sum_probability[t]) * count
+      #t_to_t[t] += count 
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count
+#
+  #t_bridge_start_initial = 0
+  #for t, num in t_to_t.items():
+     #t_bridge_start_initial += num
+            #
+#
   #for s, counts in s_to_t_count.items():
     #for t, count in counts.items():
       #t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count
+#
+  #t_bridge_start_initial = 0
+  #for t, num in t_bridge_start.items():
+     #t_bridge_start_initial += num
+#
   #for t_org, remain in t_to_t.items():
     #for s in s_to_t_probability.keys():
       #for t_target in t_to_s_probability.keys():
         #if t_org != t_target:
           ## 帰ってきたRWerのうち(1-back_sum_probability[t_target])がプラスされる
           #t_bridge_start[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-  #t_bridge_start_total = 0
-
-  # t_to_tとnext_t_to_tを使って残りが閾値を下回るまで回し続けるパワープレー
-  while(rw_remain(t_to_t) > 1):
-    for t_org, remain in t_to_t.items():
-      # まずは現在の残りから(1-back_sum_probability)だけ確定させる
-      t_bridge_start[t_org] += (1 - back_sum_probability[t_org]) * remain
-      print("Hoge")
-      print(t_bridge_start)
-      for s in s_to_t_probability.keys():
-        for t_target in t_to_s_probability.keys():
-          next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-    # next_t_to_tをt_to_tに代入し，next_t_to_tを初期化
-    print("CHECK")
-    print(next_t_to_t)
-    print(rw_remain(next_t_to_t))
-    for t in t_to_t.keys():
-      t_to_t[t] = next_t_to_t[t]
-      next_t_to_t[t] = 0
-  print("NoraMethod")
-  t_bridge_start_total = 0
-  for t, num in t_bridge_start.items():
-    t_bridge_start_total += num
-  print(t_bridge_start_total)
-
-  # 各tの変化率だけから求めようと試みた
-  # 変化率は他tで残っているRWerの回数に依存するためうまくいかない
+          ##t_bridge_start[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target] * 1.5 
+          ##t_bridge_start[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+        ##add_t[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+        ##next_t_to_t[t_target] += back_sum_probability[t_target] * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+          ##t_bridge_start[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target] / (1 - return_sum_probability[t_target])
+  #
   #for t_org, remain in t_to_t.items():
     #for s in s_to_t_probability.keys():
       #for t_target in t_to_s_probability.keys():
         #next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
-
-  for t, t_results in t_graph_result.items():
-    for target, count in t_results.items():
-      true_rw_visit[target] += count * (t_bridge_start[t]/N) / N 
+#
+  #print("Last t_bridge_start")
+  #print(t_bridge_start)
+  #t_bridge_start_total = 0
+  #for t, num in t_bridge_start.items():
+    #t_bridge_start_total += num
+  #print(t_bridge_start_total)
+  #
+  ##for s, counts in s_to_t_count.items():
+    ##for t, count in counts.items():
+      ##t_bridge_start[t] += counts[t] * ((1 - back_sum_probability[t] + back_sum_probability[t] * return_sum_probability[t]) / (back_sum_probability[t] - back_sum_probability[t] * return_sum_probability[t]))
+      ##t_bridge_start[t] += counts[t] * (1 - 0.75*back_sum_probability[t])
+      ##t_bridge_start[t] += s_to_t_count[s][t] * (1 - probs[s])
+    ##for t, count in counts.items():
+      ## やや低く見積もられた値が計算されてしまう．RW １万回のとき，約1.3倍で良さげな値になる
+      ##t_bridge_start[t] += count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count 
+      ##t_bridge_start[t] += (1 - t_to_s_probability[t][s]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += (1 - return_sum_probability[t]) * count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += count / (1 - 3*s_to_t_probability[s][t]*3*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += count
+      ##sum_count[t] += count
+      ##print(str(s) + " <-> " + str(t) + " : " + str(s_to_t_probability[s][t]) + " " + str(t_to_s_probability[t][s]))
+      ##t_bridge_start[t] += count / (1 - s_to_t_probability[s][t]*t_to_s_probability[t][s]) 
+      ##t_bridge_start[t] += count
+  ##for node in sum_count.keys():
+  ##  print(t_bridge_start[node] / sum_count[node])
+#
+  ## 初期化
+  #for t in t_to_t.keys():
+    #t_bridge_start[t] = 0
+    #next_t_to_t[t] = 0
+#
+  #
+  ##for s, counts in s_to_t_count.items():
+    ##for t, count in counts.items():
+      ##t_bridge_start[t] += (1 - back_sum_probability[t]) * count / (1 - return_sum_probability[t])
+  ##for t_org, remain in t_to_t.items():
+    ##for s in s_to_t_probability.keys():
+      ##for t_target in t_to_s_probability.keys():
+        ##if t_org != t_target:
+          ### 帰ってきたRWerのうち(1-back_sum_probability[t_target])がプラスされる
+          ##t_bridge_start[t_target] += (1 - back_sum_probability[t_target]) * remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+  ##t_bridge_start_total = 0
+#
+  ## t_to_tとnext_t_to_tを使って残りが閾値を下回るまで回し続けるパワープレー
+  #while(rw_remain(t_to_t) > 1):
+    #for t_org, remain in t_to_t.items():
+      ## まずは現在の残りから(1-back_sum_probability)だけ確定させる
+      #t_bridge_start[t_org] += (1 - back_sum_probability[t_org]) * remain
+      #for s in s_to_t_probability.keys():
+        #for t_target in t_to_s_probability.keys():
+          #next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+    ## next_t_to_tをt_to_tに代入し，next_t_to_tを初期化
+    #for t in t_to_t.keys():
+      #t_to_t[t] = next_t_to_t[t]
+      #next_t_to_t[t] = 0
+  #t_bridge_start_total = 0
+  #for t, num in t_bridge_start.items():
+    #t_bridge_start_total += num
+#
+  ## 各tの変化率だけから求めようと試みた
+  ## 変化率は他tで残っているRWerの回数に依存するためうまくいかない
+  ##for t_org, remain in t_to_t.items():
+    ##for s in s_to_t_probability.keys():
+      ##for t_target in t_to_s_probability.keys():
+        ##next_t_to_t[t_target] += remain * t_to_s_probability[t_org][s] * s_to_t_probability[s][t_target]
+#
+  #for t, t_results in t_graph_result.items():
+    #for target, count in t_results.items():
       #true_rw_visit[target] += count * (t_bridge_start[t]/N) / N 
-  return true_rw_visit 
+      ##true_rw_visit[target] += count * (t_bridge_start[t]/N) / N 
+  #return true_rw_visit 
 
 def rw_remain(t_to_t):
   remain_total = 0
   for num in t_to_t.values():
     remain_total += num
   return remain_total
+
+def merge_rw(source_graph_random_walk_result, t_bridge_result, s_bridge_result, t_bridge_start, s_bridge_re_start, target_nodes, N):
+  t_result = {}
+  s_result = {}
+
+  for t in target_nodes:
+    t_result[t] = 0
+
+  for s, visit in source_graph_random_walk_result.items():
+    s_result[s] = visit / N
+
+  for t, t_results in t_bridge_result.items():
+    for target, count in t_results.items():
+      t_result[target] += count * (t_bridge_start[t]/N) / N 
+   
+  for s, s_results in s_bridge_result.items():
+    for target, count in s_results.items():
+      s_result[target] += count * (s_bridge_re_start[s]/N) / N 
+  
+  s_result.update(t_result)
+  return s_result
 
 G = nx.karate_club_graph()
 print(sys.getsizeof(G))
@@ -467,20 +519,32 @@ for part in fpgaparts:
     #beyond_probability = Back_probability(G, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes, part)
     #beyond_probability = Back_probability(G, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes)
     s_bridge_results, beyond_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes)
+    print("I am a perfect human")
+    print(s_bridge_results)
     print(beyond_probability)
 
   else:
     t_bridge_results, back_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
     print(back_probability)
 
-t_graph_pprs = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
+# t_graph_pprs = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
 
-tmp = source_graph_random_walk_result.copy()
-for node in tmp.keys():
-  tmp[node] /= float(sys.argv[2]) 
+t_bridge_start, s_bridge_re_start = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
+
+merged_ppr = merge_rw(source_graph_random_walk_result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, target_G_nodes, int(sys.argv[2]))
+print("STarY")
+top_ppr(merged_ppr, list(G.nodes))
+print("Compare")
+perfect_pprs = nx.pagerank(G, personalization={ppr_source:1})
+top_ppr(perfect_pprs, list(G.nodes()))
+print(calc_ndcg(perfect_pprs, merged_ppr))
+
+# tmp = source_graph_random_walk_result.copy()
+#for node in tmp.keys():
+#  tmp[node] /= float(sys.argv[2]) 
 #top_ppr(tmp, source_G_nodes)
-re_rw_num = estimate_rw_count(source_graph_random_walk_result, out_graph_count, source_bridge_nodes, back_probability)
-Re_Bridge_RandomWalk(re_rw_num, source_graph_random_walk_result, 0.15, G, source_G_nodes) 
+#re_rw_num = estimate_rw_count(source_graph_random_walk_result, out_graph_count, source_bridge_nodes, back_probability)
+#Re_Bridge_RandomWalk(re_rw_num, source_graph_random_walk_result, 0.15, G, source_G_nodes) 
 
 for node in source_graph_random_walk_result.keys(): 
   source_graph_random_walk_result[node] /= float(sys.argv[2]) 
