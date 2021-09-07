@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import graphviz
 import networkx as nx
-#from networkx.algorithms import community
 import community as community_louvain
 import nxmetis
 import sys
@@ -90,9 +89,7 @@ def Bridge_RandomWalk(G, Sub_G, a, N, out_bridges, in_bridges):
   probability = {} # probability[N][M] : N → M にでていく確率
   out_prob = {} # N → 外に出ていく確率
 
-  print("In Bridge")
-  print(in_bridges)
-  print(Sub_G)
+
   for bridge in in_bridges:
     probability[bridge] = {}
     visit_count = {}
@@ -115,10 +112,7 @@ def Bridge_RandomWalk(G, Sub_G, a, N, out_bridges, in_bridges):
         RW_count += 1
       else:
         next_node= random.choice(list(G.neighbors(current_node)))
-        #if (next_node not in out_bridges):
-        if (next_node not in Sub_G):
-          if next_node not in out_graph_count:
-            out_graph_count[next_node] = 0
+        if (next_node in out_bridges):
           out_graph_count[next_node] += 1
           out_count += 1
           next_node = bridge
@@ -218,13 +212,6 @@ def Bt_return_num(ppr, a):
  return local_prob + out_prob
  
 def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph_result, target_nodes, N):
-  print("DEBUG")
-  print(s_to_t_probability)
-  print("----------")
-  print(t_to_s_probability)
-  print("----------")
-  print(s_to_t_count)
-  print("----------")
   t_bridge_start = {}
   s_bridge_re_start = {}
 
@@ -260,8 +247,7 @@ def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph
 
   for counts in s_to_t_count.values():
     for t, count in counts.items():
-      if t in t_to_s_probability.keys():
-        t_to_t[t] += count 
+      t_to_t[t] += count 
 
   # 割り振りが終了するまで回し続ける
   while(rw_remain(t_to_t) > 1):
@@ -287,13 +273,13 @@ def rw_remain(t_to_t):
 
 def merge_rw(source_graph_random_walk_result, t_bridge_result, s_bridge_result, t_bridge_start, s_bridge_re_start, target_nodes, N):
   t_result = {}
-  s_result = source_graph_random_walk_result
+  s_result = {}
 
   for t in target_nodes:
     t_result[t] = 0
 
-  #for s, visit in source_graph_random_walk_result.items():
-    #s_result[s] = visit / N
+  for s, visit in source_graph_random_walk_result.items():
+    s_result[s] = visit / N
 
   for t, t_results in t_bridge_result.items():
     for target, count in t_results.items():
@@ -312,36 +298,28 @@ G = nx.karate_club_graph()
 #communities_generator = community.girvan_newman(G)
 #next_level_communities = next(communities_generator)
 #G = nx.read_edgelist("./dataset/p2p-Gnutella08.txt", comments='#')
-partition = community_louvain.best_partition(G)
-partitioned_nodes = {}
-for node, community in partition.items():
-  if not  community in partitioned_nodes:
-    partitioned_nodes[community] = []
-  partitioned_nodes[community].append(int(node))
-
-
 PG = []
-#objval, fpgaparts = nxmetis.partition(G, int(sys.argv[1]))
-objval, partitioned_nodes = nxmetis.partition(G, int(sys.argv[1]))
+objval, fpgaparts = nxmetis.partition(G, int(sys.argv[1]))
+print("PARTITION")
+#print(fpgaparts)
 
 ppr_source = 14
 source_G_nodes = []
 target_G_nodes = []
 
 # partition into subgraph
-#for part in fpgaparts:
-for part in partitioned_nodes:
-#for part in partitioned_nodes.values():
+for part in fpgaparts:
+# for part in partitioned_nodes.values():
   print(part)
   PG.append(nx.subgraph(G, part))
   if (ppr_source in part):
     source_G_nodes = part
   else:
-    target_G_nodes.append(part)
+    target_G_nodes = part
 
 bridge_nodes = get_bridge_nodes(G, PG)
+print(len(bridge_nodes))
 bridge_result = {}
-result = {}
 source_bridge_nodes = []
 target_bridge_nodes = []
 source_graph_random_walk_result = {}
@@ -349,66 +327,46 @@ bridge_graph_random_walk_result = {}
 out_graph_count = {}
 back_probability = {}
 beyond_probability = {}
-#for part in fpgaparts:
-source_bridge_nodes = list(set(bridge_nodes) & set(source_G_nodes))
-print("source")
-print(source_bridge_nodes)
-all_target_bridge_nodes = []
-target_bridge_nodes = []
-for nodes in target_G_nodes:
-  all_target_bridge_nodes.extend(list(set(bridge_nodes) & set(nodes)))
+for part in fpgaparts:
+  if ppr_source in part:
+    source_bridge_nodes = list(set(bridge_nodes) & set(part))
+  else:
+    target_bridge_nodes = list(set(bridge_nodes) & set(part))
 
-print("Check Point")
-#for part in partitioned_nodes.values():
-  #if ppr_source in part:
-    #source_bridge_nodes = list(set(bridge_nodes) & set(part))
-  #else:
-    #target_bridge_nodes = list(set(bridge_nodes) & set(part))
+for part in fpgaparts:
+  if ppr_source in part:
+    #source_bridge_nodes = part
+    source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, part, source_bridge_nodes)
+    s_bridge_results, beyond_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), target_bridge_nodes, source_bridge_nodes)
 
-# source側でのRW
-source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, source_G_nodes, source_bridge_nodes)
-s_bridge_results, beyond_probability = Bridge_RandomWalk(G, source_G_nodes, 0.15, int(sys.argv[2]), all_target_bridge_nodes, source_bridge_nodes)
+  else:
+    t_bridge_results, back_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
 
-for s, visit in source_graph_random_walk_result.items():
-  result[s] = visit / int(sys.argv[2])
+t_bridge_start, s_bridge_re_start = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
 
-# target側でのRW
-for part in target_G_nodes:
-  target_bridge_nodes = list(set(bridge_nodes) & set(part))
-  t_bridge_results, back_probability = Bridge_RandomWalk(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
-
-  t_bridge_start, s_bridge_re_start = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, int(sys.argv[2]))
-
-  print("BEFORE")
-  print(result)
-  result = merge_rw(result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, part, int(sys.argv[2]))
-  print("AFTER")
-  print(result)
-
-#merged_ppr = merge_rw(source_graph_random_walk_result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, target_G_nodes, int(sys.argv[2]))
+merged_ppr = merge_rw(source_graph_random_walk_result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, target_G_nodes, int(sys.argv[2]))
 print("start")
-top_ppr(result, list(G.nodes))
+top_ppr(merged_ppr, list(G.nodes))
 check = 0
-for val in result.values():
+for val in merged_ppr.values():
   check += val
 print(check)
 
 print("Compare")
 perfect_pprs = nx.pagerank(G, personalization={ppr_source:1})
 top_ppr(perfect_pprs, list(G.nodes()))
-#print(calc_ndcg(perfect_pprs, merged_ppr))
-print(calc_ndcg(perfect_pprs, result))
+print(calc_ndcg(perfect_pprs, merged_ppr))
 
-node_colors = ['black'] * nx.number_of_nodes(G)
-colors = ['red', 'yellow', 'green', 'blue', 'black']
-for i, p in enumerate(partitioned_nodes.values()):
-  for node_id in p:
-    node_colors[node_id] = colors[i]
+#node_colors = ['black'] * nx.number_of_nodes(G)
+#colors = ['red', 'yellow', 'green', 'blue', 'black']
+#for i, p in enumerate(fpgaparts):
+  #for node_id in p:
+    #node_colors[node_id] = colors[i]
 
 #ppr = nx.pagerank(G, personalization={16:1})
 #print(ppr)
-fig = plt.figure()
-pos = nx.circular_layout(G)
-nx.draw_networkx(G, node_color=node_colors)
-plt.axis("off")
-fig.savefig("partition.png")
+#fig = plt.figure()
+#pos = nx.circular_layout(G)
+#nx.draw_networkx(G, node_color=node_colors)
+#plt.axis("off")
+#fig.savefig("partition.png")
