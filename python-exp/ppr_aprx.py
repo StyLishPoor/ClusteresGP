@@ -5,6 +5,7 @@ import networkx as nx
 import community as community_louvain
 import nxmetis
 import sys
+import os
 import random
 import math
 import time
@@ -63,11 +64,6 @@ def calc_ndcg(perfect, estimate):
   return estimate_num / perfect_num
 
 def calc_data_size(receive_bridge, send_bridge, t_results, t_back):
-  #tmp_back = {}
-  #for t_bridge, probs in t_back.items():
-    #for s_bridge, prob in probs.items():
-      #if s_bridge not in receive_bridge:
-        #tmp_back[t_bridge][s_bridge] = t_back[t_bridge][s_bridge] 
 
   send_results = {}
   send_back = {}
@@ -75,11 +71,12 @@ def calc_data_size(receive_bridge, send_bridge, t_results, t_back):
     send_results[bridge] = t_results[bridge]
     send_back[bridge] = t_back[bridge]
 
-  file1 = open('tmp1.json', 'w')
-  file2 = open('tmp2.json', 'w')
+  file1 = open('json/result.json', 'w')
+  file2 = open('json/prob.json', 'w')
   json.dump(send_results, file1)
   json.dump(send_back, file2)
   
+  return os.path.getsize('json/result.json'), os.path.getsize('json/prob.json')
 
 def get_bridge_nodes(G, PG):
   bridge_nodes = set()
@@ -125,6 +122,11 @@ def RandomWalk(source, a, N, G, source_G_nodes, souce_bridge_nodes):
           out_graph_count[current_node][next_node] += 1
         next_node = source
         RW_count += 1
+
+  file1 = open('json/source-rw.json', 'w')
+  file2 = open('json/out-rw.json', 'w')
+  json.dump(visit_count, file1)
+  json.dump(out_graph_count, file2)
   return visit_count, out_graph_count
       
       
@@ -175,10 +177,15 @@ def Bridge_RandomWalk(G, Sub_G, a, N, out_bridges, in_bridges):
     for node, count in out_graph_count.items():
       probability[bridge][node] = count / N
     
+  file1 = open('json/source-count.json', 'w')
+  file2 = open('json/source-probability.json', 'w')
+  json.dump(visit_counts, file1)
+  json.dump(probability, file2)
 
   return visit_counts, probability
 
 def Bridge_RandomWalk2(G, Sub_G, a, N, out_bridges, in_bridges):
+  json_count = {} 
   visit_counts = {} # visit_counts[N][M] : Bridge N → M の回数
   probability = {} # probability[N][M] : N → M にでていく確率
   out_prob = {} # N → 外に出ていく確率
@@ -217,16 +224,23 @@ def Bridge_RandomWalk2(G, Sub_G, a, N, out_bridges, in_bridges):
 
 
     tmp_count = {}
+    tmp2_count = {}
     for target, count in visit_count.items():
+      tmp2_count[target] = int(count * N / (N - out_count))
       if count >= 20:
         tmp_count[target] = int(count * N / (N - out_count))
 
+    json_count[bridge] = tmp2_count
     visit_counts[bridge] = tmp_count
 
     for node, count in out_graph_count.items():
-      if count > 50:
-        probability[bridge][node] = count / N
+      probability[bridge][node] = count / N
     
+
+  file1 = open('json/target-count.json', 'w')
+  file2 = open('json/target-probability.json', 'w')
+  json.dump(json_count, file1)
+  json.dump(probability, file2)
 
   return visit_counts, probability
 
@@ -324,6 +338,20 @@ def decide_skip(bridge_nodes, G, p):
 
   return skip
 
+def read_json(count_path, probability_path, source=True):
+  count_file = open(count_path, 'r')
+  probability_file = open(probability_path, 'r')
+
+  if source:
+    source_count = json.load(count_file)
+    source_probability = json.load(probability_file)
+    return source_count, source_probability
+  else:
+    target_count = json.load(count_file)
+    target_probability = json.load(probability_file)
+    return target_count, target_probability
+
+   
 def BeyondEstimate(s_to_t_probability, t_to_s_probability, s_to_t_count, t_graph_result, target_nodes, s_skip, t_skip, N):
   t_bridge_start = {}
   s_bridge_re_start = {}
@@ -415,7 +443,8 @@ def merge_rw(source_graph_random_walk_result, t_bridge_result, s_bridge_result, 
 #G = nx.fast_gnp_random_graph(1000, 0.1)
 #G = nx.read_edgelist("./dataset/web-Stanford.txt", comments='#')
 G = nx.read_edgelist("./dataset/email-Eu-core.txt", nodetype=int, comments='#')
-print("Original Data Size: " + str(get_size(G)))
+size_all = os.path.getsize("./dataset/email-Eu-core.txt")
+print(size_all)
 #communities_generator = community.girvan_newman(G)
 #next_level_communities = next(communities_generator)
 #G = nx.read_edgelist("./dataset/p2p-Gnutella08.txt", comments='#')
@@ -470,8 +499,29 @@ for nodes in target_G_nodes:
     #target_bridge_nodes = list(set(bridge_nodes) & set(part))
 
 # source側でのRW
-source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, source_G_nodes, source_bridge_nodes)
-s_bridge_results, beyond_probability = Bridge_RandomWalk(G, source_G_nodes, 0.15, int(sys.argv[2]), all_target_bridge_nodes, source_bridge_nodes)
+#source_graph_random_walk_result, out_graph_count = RandomWalk(ppr_source, 0.15, int(sys.argv[2]), G, source_G_nodes, source_bridge_nodes)
+source_graph_random_walk_result_json, out_graph_count_json = read_json("json/source-rw.json", "json/out-rw.json")
+for s, count in source_graph_random_walk_result_json.items():
+  source_graph_random_walk_result[int(s)] = int(count)
+for s, counts in out_graph_count_json.items():
+  out_graph_count[int(s)] = {}
+  for target, count in counts.items():
+    out_graph_count[int(s)][int(target)] = int(count)
+#s_bridge_results, beyond_probability = Bridge_RandomWalk(G, source_G_nodes, 0.15, int(sys.argv[2]), all_target_bridge_nodes, source_bridge_nodes)
+s_bridge_results_json, beyond_probability_json = read_json("json/source-count.json", "json/source-probability.json")
+#s_bridge_results = {int(k): int(v) for k, v in s_bridge_results_json.items()}
+
+s_bridge_results = {}
+beyond_probability = {}
+for s, results in s_bridge_results_json.items():
+  s_bridge_results[int(s)] = {}
+  for target, count in results.items():
+    s_bridge_results[int(s)][int(target)] = int(count)
+
+for s, probs in beyond_probability_json.items():
+  beyond_probability[int(s)] = {}
+  for target, prob in probs.items():
+    beyond_probability[int(s)][int(target)] = float(prob)
 
 for s, visit in source_graph_random_walk_result.items():
   result[s] = visit / int(sys.argv[2])
@@ -479,21 +529,32 @@ for s, visit in source_graph_random_walk_result.items():
 # target側でのRW
 for part in target_G_nodes:
   target_bridge_nodes = list(set(bridge_nodes) & set(part))
-  t_bridge_results, back_probability = Bridge_RandomWalk2(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
+  #t_bridge_results, back_probability = Bridge_RandomWalk2(G, part, 0.15, int(sys.argv[2]), source_bridge_nodes, target_bridge_nodes)
+  t_bridge_results_json, back_probability_json = read_json("json/target-count.json", "json/target-probability.json", False)
+  t_bridge_results = {}
+  back_probability = {}
+  for t, results in t_bridge_results_json.items():
+    t_bridge_results[int(t)] = {}
+    for target, count in results.items():
+      if int(count) > int(sys.argv[5]):
+        t_bridge_results[int(t)][int(target)] = int(count)
+
+  for t, probs in back_probability_json.items():
+    back_probability[int(t)] = {}
+    for target, prob in probs.items():
+      if float(prob) > float(sys.argv[6]):
+        back_probability[int(t)][int(target)] = float(prob)
 
   s_skip = decide_skip(source_bridge_nodes, G, float(sys.argv[3]))
   t_skip = decide_skip(target_bridge_nodes, G, float(sys.argv[4]))
-  print(len(source_bridge_nodes), len(s_skip), len(target_bridge_nodes), len(t_skip))
   s_receive_bridge = list(set(source_bridge_nodes) - set(s_skip))
   t_send_bridge = list(set(target_bridge_nodes) - set(t_skip))
-  print(len(source_bridge_nodes), len(s_skip), len(s_receive_bridge), len(target_bridge_nodes), len(t_skip), len(t_send_bridge))
-  calc_data_size(s_receive_bridge, t_send_bridge, t_bridge_results, back_probability)
-  #exit()
   t_bridge_start, s_bridge_re_start = BeyondEstimate(beyond_probability, back_probability, out_graph_count, t_bridge_results, target_G_nodes, s_skip, t_skip, int(sys.argv[2]))
 
   result = merge_rw(result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, part, int(sys.argv[2]))
 
 #merged_ppr = merge_rw(source_graph_random_walk_result, t_bridge_results, s_bridge_results, t_bridge_start, s_bridge_re_start, target_G_nodes, int(sys.argv[2]))
+size1, size2 = calc_data_size(s_receive_bridge, t_send_bridge, t_bridge_results, back_probability)
 print("start")
 top_ppr(result, list(G.nodes), 50)
 check = 0
@@ -504,7 +565,12 @@ print(check)
 print("Compare")
 perfect_pprs = nx.pagerank(G, personalization={ppr_source:1})
 top_ppr(perfect_pprs, list(G.nodes()), 50)
-print(calc_ndcg(perfect_pprs, result))
+ndcg = calc_ndcg(perfect_pprs, result)
+size1 = os.path.getsize('json/result.json')
+size2 = os.path.getsize('json/prob.json')
+output_file = open("nora.txt", 'a')
+output_file.write(str(size1) + " "  + str(size2) + " " +  str(100*(size1+size2)/size_all)+ " " +  str(check) + " " +  str(ndcg))
+output_file.close()
 
 #node_colors = ['black'] * nx.number_of_nodes(G)
 #colors = ['red', 'yellow', 'green', 'blue', 'black']
